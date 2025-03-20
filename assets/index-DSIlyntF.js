@@ -178,7 +178,7 @@ const options = {
   method: "GET",
   headers: {
     accept: "application/json",
-    Authorization: `Bearer ${void 0}`
+    Authorization: `Bearer ${"eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJmYTI4NGQyMzkyYWI1Y2Q3NTRhMDJiYWEzYzM3NmZlNiIsIm5iZiI6MTY5MDk4NDkyMS43NTIsInN1YiI6IjY0Y2E2MWQ5MGNiMzM1MTdjMDZhOWQ1MyIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.piQJfh75UeyzIY-z6BLJz3SU6m9AlKsM_tU7wtRt04c"}`
   }
 };
 const url = {
@@ -216,7 +216,7 @@ const useGetMovieList = () => {
     try {
       const response = await fetch(url.popular(page), {
         headers: {
-          Authorization: `Bearer ${void 0}`
+          Authorization: `Bearer ${"eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJmYTI4NGQyMzkyYWI1Y2Q3NTRhMDJiYWEzYzM3NmZlNiIsIm5iZiI6MTY5MDk4NDkyMS43NTIsInN1YiI6IjY0Y2E2MWQ5MGNiMzM1MTdjMDZhOWQ1MyIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.piQJfh75UeyzIY-z6BLJz3SU6m9AlKsM_tU7wtRt04c"}`
         },
         method: "GET"
       });
