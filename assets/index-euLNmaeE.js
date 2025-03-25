@@ -74,6 +74,7 @@ function Core() {
     rootComponent: null
   };
   const _render = timeoutDebounce(() => {
+    console.log("rerender");
     const { root, rootComponent } = options2;
     if (!root || !rootComponent) return;
     root.innerHTML = rootComponent();
