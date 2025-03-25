@@ -35,11 +35,16 @@
     fetch(link.href, fetchOpts);
   }
 })();
-const debounce = (callback) => {
-  let id = -1;
-  return () => {
-    cancelAnimationFrame(id);
-    id = requestAnimationFrame(callback);
+const timeoutDebounce = (fn, delay) => {
+  let timeout;
+  return (...args) => {
+    return new Promise((resolve) => {
+      if (timeout) clearTimeout(timeout);
+      timeout = setTimeout(async () => {
+        const result = await fn(...args);
+        resolve(result);
+      }, delay);
+    });
   };
 };
 const $ = (selector, scope = document) => {
@@ -64,32 +69,17 @@ const isTarget = (target, {
 };
 function Core() {
   const options2 = {
-    currentStateKey: 0,
-    states: [],
     events: [],
     root: null,
     rootComponent: null
   };
-  function useState2(initialState) {
-    const { currentStateKey: key, states } = options2;
-    if (states.length === key) states.push(initialState);
-    const state = states[key];
-    const setState = (newState) => {
-      if (newState === state) return;
-      states[key] = newState;
-      _render();
-    };
-    options2.currentStateKey += 1;
-    return [state, setState];
-  }
-  const _render = debounce(() => {
+  const _render = timeoutDebounce(() => {
     const { root, rootComponent } = options2;
     if (!root || !rootComponent) return;
     root.innerHTML = rootComponent();
-    options2.currentStateKey = 0;
     _addEvent();
     options2.events = [];
-  });
+  }, 100);
   function render2(rootComponent, root) {
     options2.root = root;
     options2.rootComponent = rootComponent;
@@ -117,7 +107,7 @@ function Core() {
   function reRender2() {
     _render();
   }
-  return { useState: useState2, useEvents: useEvents2, render: render2, reRender: reRender2 };
+  return { useEvents: useEvents2, render: render2, reRender: reRender2 };
 }
 const { useEvents, render, reRender } = Core();
 let currentPage = 1;
@@ -182,7 +172,7 @@ const options = {
   }
 };
 const url = {
-  popular: (page) => `https://api.themoviedb.org/3/discover/movie?include_adult=false&include_video=false&language=ko-KR&page=1&sort_by=popularity.desc=${page}`,
+  popular: (page) => `https://api.themoviedb.org/3/discover/movie?include_adult=false&include_video=false&language=ko-KR&page=${page}&sort_by=popularity.desc`,
   search: (query) => `https://api.themoviedb.org/3/search/movie?include_adult=false&language=ko-KR&page=1&query=${encodeURIComponent(
     query
   )}`,
@@ -214,17 +204,11 @@ const useGetMoreMovieList = () => {
 const useGetMovieList = () => {
   const fetchMovies = async (page) => {
     try {
-      const response = await fetch(url.popular(page), {
-        headers: {
-          Authorization: `Bearer ${"eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIwOTNjMDVjNDZlNDcyN2MxY2FmMWE2NDg3MzdjMjc1OSIsIm5iZiI6MTc0MjQ0NjIzNy40MTI5OTk5LCJzdWIiOiI2N2RiOWU5ZDA4Y2I1ZWI3MjdlNzk2YzQiLCJzY29wZXMiOlsiYXBpX3JlYWQiXSwidmVyc2lvbiI6MX0.Now1gxm-JGqrn9JDSOavAZRtoCFKXiNiy4-Ib-VA8Do"}`
-        },
-        method: "GET"
-      });
+      const response = await fetch(url.popular(page), options);
       const data = await response.json();
       if (data) {
         setIsLoading(false);
       }
-      setMovies([...movies, ...data.results]);
       setTotalResults(data.total_results);
       return data.results;
     } catch (error) {
@@ -390,9 +374,13 @@ const App = () => {
   const { fetchMovies } = useGetMovieList();
   const { fetchMoreMovies } = useGetMoreMovieList();
   const [addEvent] = useEvents(".app-layout");
-  addEvent("click", ".more-button", () => {
-    fetchMoreMovies(fetchMovies);
-  });
+  addEvent(
+    "click",
+    ".more-button",
+    timeoutDebounce(() => {
+      fetchMoreMovies(fetchMovies);
+    }, 500)
+  );
   if (movies.length === 0) {
     fetchMovies(1).then((results) => {
       if (results) {
@@ -410,17 +398,19 @@ const App = () => {
     <div class="app-layout">
       <h1 class="sub-title">${searchInputValue.length > 0 ? `${searchInputValue} 검색 결과` : "지금 인기 있는 영화"}</h1>
 
-      ${isSearchError ? `<div class="no-results">검색 결과를 불러오는데 실패하였습니다.</div>` : ""}
-      ${searchInputValue.length > 0 && displayMovieList.length === 0 ? `<div class="no-results">검색 결과가 없습니다.</div>` : `<ul class="thumbnail-list">
+      ${isSearchError ? `<div class="search-server-error">검색 결과를 불러오는데 실패하였습니다.</div>` : ""}
+      ${searchInputValue.length > 0 && displayMovieList.length === 0 ? `<div class="no-results">검색 결과가 없습니다.</div>` : isLoading ? `<ul class="thumbnail-list">
+      ${Array.from({ length: 20 }).map((_) => Skeleton()).join("")}
+          </ul>` : `<ul class="thumbnail-list">
               ${displayMovieList.map((movie) => {
-    return isLoading ? Skeleton() : MovieItem({
+    return MovieItem({
       title: movie.title,
       rate: movie.vote_count,
       src: `https://image.tmdb.org/t/p/w500${movie.poster_path}`
     });
   }).join("")}
             </ul>
-      ${isMoreError ? `<div>영화 목록을 불러오는 데 실패했습니다.</div>` : ""}
+      ${isMoreError ? `<div class='more-error'>영화 목록을 불러오는 데 실패했습니다.</div>` : ""}
     ${displayMovieList.length < totalResults ? Button({
     attribute: {
       class: "primary detail more-button"
