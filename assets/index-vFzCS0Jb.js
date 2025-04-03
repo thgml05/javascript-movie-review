@@ -115,7 +115,6 @@ let movies = [];
 let movieDetail;
 let searchInputValue = "";
 let searchResults = [];
-let totalResults = 0;
 const setMovies = (newMovies) => {
   movies = newMovies;
   reRender();
@@ -133,7 +132,6 @@ const setSearchResults = (results) => {
   reRender();
 };
 const setTotalResults = (total) => {
-  totalResults = total;
   reRender();
 };
 const appendMovies = (newMovies) => {
@@ -172,6 +170,11 @@ const setIsModalOpen = (value) => {
   isModalOpen = value;
   reRender();
 };
+let isDetailError = false;
+const setIsDetailError = (value) => {
+  isDetailError = value;
+  reRender();
+};
 const options = {
   method: "GET",
   headers: {
@@ -189,22 +192,26 @@ const url = {
   )}`,
   detail: (id) => `https://api.themoviedb.org/3/movie/${id}?language=ko-KR`
 };
-const initMovie = {
-  adult: false,
-  backdrop_path: "",
-  genre_ids: [],
-  id: 0,
-  original_language: "",
-  original_title: "",
-  overview: "",
-  popularity: 0,
-  poster_path: "",
-  release_date: "",
-  title: "",
-  video: false,
-  vote_average: 0,
-  vote_count: 0,
-  isLoading: true
+const useGetMovieList = () => {
+  const fetchMovies = async (page) => {
+    try {
+      const response = await fetch(url.popular(page), options);
+      const data = await response.json();
+      if (data) {
+        setIsLoading(false);
+      }
+      if (!response.ok) {
+        setIsError(true);
+      }
+      setTotalResults(data.total_results);
+      return data.results.map((result) => ({ ...result, isLoading: false }));
+    } catch (error) {
+      setIsError(true);
+      console.error("Error fetching data in App:", error);
+    }
+    return null;
+  };
+  return { fetchMovies };
 };
 const useGetMoreMovieList = () => {
   const fetchMoreMovies = async (callback) => {
@@ -230,31 +237,6 @@ const useGetMoreMovieList = () => {
   };
   return { fetchMoreMovies };
 };
-const useGetMovieList = () => {
-  const fetchMovies = async (page) => {
-    try {
-      const response = await fetch(url.popular(page), options);
-      const data = await response.json();
-      if (data) {
-        setIsLoading(false);
-      }
-      setTotalResults(data.total_results);
-      return data.results.map((result) => ({ ...result, isLoading: false }));
-    } catch (error) {
-      setIsError(true);
-      console.error("Error fetching data in App:", error);
-    }
-    return null;
-  };
-  return { fetchMovies };
-};
-const images = {
-  logo: "./logo.png",
-  starEmpty: "./star_empty.png",
-  starFull: "./star_filled.png",
-  woowacourse: "./woowacourse_logo.png",
-  search: "./search.png"
-};
 const observeLastMovie = () => {
   const { fetchMovies } = useGetMovieList();
   const { fetchMoreMovies } = useGetMoreMovieList();
@@ -265,18 +247,28 @@ const observeLastMovie = () => {
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting) {
-          observer.unobserve(lastMovie);
           fetchMoreMovies(fetchMovies).then((result) => {
             if (result.length !== 0) {
-              setTimeout(observeLastMovie, 500);
+              observeLastMovie();
             }
           });
         }
       },
-      { threshold: 1 }
+      { threshold: 0.25 }
     );
     observer.observe(lastMovie);
   }, 100);
+};
+function c(n, ...t) {
+  return (r) => t.reduce((n2, t2) => t2(n2), n(r));
+}
+const images = {
+  logo: "./logo.png",
+  starEmpty: "./star_empty.png",
+  starFull: "./star_filled.png",
+  woowacourse: "./woowacourse_logo.png",
+  search: "./search.png",
+  fallback: "./fallback.png"
 };
 const VOTE_TEXT = [
   "최악이에요(2/10)",
@@ -287,46 +279,41 @@ const VOTE_TEXT = [
 ];
 const MovieDetail = () => {
   const [addEvent] = useEvents(".modal");
-  const handleEscapeKey = (event) => {
-    if (event.key === "Escape") {
-      setIsModalOpen(false);
-      document.removeEventListener("keydown", handleEscapeKey);
-      observeLastMovie();
-    }
-  };
-  document.addEventListener("keydown", handleEscapeKey);
   addEvent("click", ".close-modal", () => {
     $(".modal-background").classList.remove("active");
     setIsModalOpen(false);
-    setTimeout(() => {
-      observeLastMovie();
-    }, 500);
+    observeLastMovie();
   });
   addEvent("click", ".my-vote-star", (event) => {
-    const target = event.target.closest(
-      ".my-vote-star"
+    const clickProcess = c(
+      (e) => e.target.closest(".my-vote-star"),
+      (target) => {
+        var _a;
+        return ((_a = target == null ? void 0 : target.dataset) == null ? void 0 : _a.index) ? target.dataset.index : null;
+      },
+      (index) => {
+        if (index && movieDetail) {
+          window.localStorage.setItem(JSON.stringify(movieDetail.id), index);
+        }
+      }
     );
-    if (!target || !target.dataset.index) return;
-    if (movieDetail)
-      window.localStorage.setItem(
-        JSON.stringify(movieDetail.id),
-        target.dataset.index
-      );
+    clickProcess(event);
   });
   addEvent("mouseover", ".my-vote-star", (event) => {
+    var _a;
     const target = event.target.closest(
       ".my-vote-star"
     );
-    if (!target || !target.dataset.index) return;
+    if (!((_a = target == null ? void 0 : target.dataset) == null ? void 0 : _a.index)) return;
     const index = Number(target.dataset.index);
     const starElements = $$(".my-vote-star");
     const starTextElement = $(".my-vote-text");
     starElements.forEach((element, i) => {
       if (i <= index) {
         element.src = images.starFull;
-        starTextElement.textContent = VOTE_TEXT[i];
       } else element.src = images.starEmpty;
     });
+    starTextElement.textContent = VOTE_TEXT[index];
   });
   addEvent("mouseout", ".my-vote-star", () => {
     if (movieDetail) {
@@ -335,7 +322,8 @@ const MovieDetail = () => {
       );
       const starElements = $$(".my-vote-star");
       starElements.forEach((element) => {
-        if (!element.dataset.index) return;
+        var _a;
+        if (!((_a = element == null ? void 0 : element.dataset) == null ? void 0 : _a.index)) return;
         const index = parseInt(element.dataset.index);
         if (vIndex >= index) element.src = images.starFull;
         else element.src = images.starEmpty;
@@ -345,6 +333,7 @@ const MovieDetail = () => {
   });
   if (!movieDetail) return;
   const voteIndex = Number(window.localStorage.getItem(JSON.stringify(movieDetail.id))) || -1;
+  if (isDetailError) return `<div>영화 정보를 불러오지 못했습니다.</div>`;
   return `
         <button class="close-modal" id="closeModal">
           <img src=/modal_button_close.png />
@@ -353,6 +342,7 @@ const MovieDetail = () => {
           <div class="modal-image">
             <img
               src="https://image.tmdb.org/t/p/original//${movieDetail.poster_path}"
+              onerror="this.src='${images.fallback}'"
             />
           </div>
           <div class="modal-description">
@@ -386,6 +376,14 @@ const MovieDetail = () => {
   `;
 };
 const Modal = () => {
+  const handleEscapeKey = (event) => {
+    if (event.key === "Escape") {
+      setIsModalOpen(false);
+      document.removeEventListener("keydown", handleEscapeKey);
+      observeLastMovie();
+    }
+  };
+  document.addEventListener("keydown", handleEscapeKey);
   return `
       <div class="modal-background ${isModalOpen && "active"}" id="modalBackground">
         <div class="modal">
@@ -402,10 +400,22 @@ const Footer = () => {
     </footer>
   `;
 };
-const Button = (props) => {
-  const { attribute, children } = props;
-  return `
-    <button ${attribute ? parseAttribute(attribute) : ""}" >${children}</button>`;
+const initMovie = {
+  adult: false,
+  backdrop_path: "",
+  genre_ids: [],
+  id: 0,
+  original_language: "",
+  original_title: "",
+  overview: "",
+  popularity: 0,
+  poster_path: "",
+  release_date: "",
+  title: "",
+  video: false,
+  vote_average: 0,
+  vote_count: 0,
+  isLoading: true
 };
 const useGetMovieDetail = () => {
   const fetchMovieDetail = async (id) => {
@@ -416,6 +426,7 @@ const useGetMovieDetail = () => {
       return data;
     } catch (error) {
       console.error("Error fetching data in App:", error);
+      setIsDetailError(true);
     }
     return null;
   };
@@ -431,6 +442,9 @@ const useGetSearchMovieList = () => {
       setTotalResults(data.total_results);
       setSearchResults(results);
       resetPage();
+      if (!response.ok) {
+        setIsSearchError(true);
+      }
       return results;
     } catch (error) {
       setIsSearchError(true);
@@ -448,6 +462,11 @@ const useInputChange = (selector, setSearchInputValue2) => {
     setSearchInputValue2(inputValue);
   };
   return { handleInputChange };
+};
+const Button = (props) => {
+  const { attribute, children } = props;
+  return `
+    <button ${attribute ? parseAttribute(attribute) : ""}" >${children}</button>`;
 };
 const Input = (props) => {
   const { attribute } = props;
@@ -544,11 +563,12 @@ const MovieItem = (props) => {
                     class="thumbnail"
                     src="${src}"
                     alt="${title}"
+                    onerror="this.src='${images.fallback}'"
                   />
                   <div class="item-desc">
                     <p class="rate">
                       <img src="${images.starEmpty}" class="star" />
-                      <span>${rate}</span>
+                      <span>${rate == null ? void 0 : rate.toFixed(1)}</span>
                     </p>
                     <strong>${title}</strong>
                   </div>
@@ -598,23 +618,12 @@ const movieListRenderer = () => {
       return movie.isLoading ? Skeleton() : MovieItem({
         id: movie.id,
         title: movie.title,
-        rate: movie.vote_count,
+        rate: movie.vote_average,
         src: `https://image.tmdb.org/t/p/w500${movie.poster_path}`
       });
     }).join("")}
             </ul>`;
   }
-};
-const moreButtonRenderer = () => {
-  const displayMovieList = searchInputValue.trim().length > 0 ? searchResults : movies;
-  if (displayMovieList.length < totalResults)
-    return Button({
-      attribute: {
-        class: "primary detail more-button"
-      },
-      children: "더 보기"
-    });
-  else return "";
 };
 const serverSearchError = () => {
   if (isSearchError)
@@ -628,15 +637,6 @@ const moreMovieServerError = () => {
 };
 const App = () => {
   const { fetchMovies } = useGetMovieList();
-  const { fetchMoreMovies } = useGetMoreMovieList();
-  const [addEvent] = useEvents(".app-layout");
-  addEvent(
-    "click",
-    ".more-button",
-    timeoutDebounce(() => {
-      fetchMoreMovies(fetchMovies);
-    }, 500)
-  );
   if (movies.length === 0) {
     setMovies(
       Array.from({ length: 20 }).map((_) => {
@@ -650,23 +650,13 @@ const App = () => {
       }
     });
   }
-  const mutationObserver = new MutationObserver(() => {
-    observeLastMovie();
-  });
-  setTimeout(() => {
-    const movieListElement = document.querySelector(".thumbnail-list");
-    if (movieListElement) {
-      mutationObserver.observe(movieListElement, { childList: true });
-    }
-  }, 0);
   return ` 
-  ${headerRender()}
+    ${headerRender()}
     <div class="app-layout">
       <h1 class="sub-title">${subTitleRenderer()}</h1>
       ${serverSearchError()}
       ${movieListRenderer()}
       ${moreMovieServerError()}
-    ${moreButtonRenderer()}
     </div>
     ${Modal()}
     ${Footer()}
